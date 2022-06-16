@@ -8,24 +8,48 @@ from click import FileError
 import requests
 from bs4 import BeautifulSoup
 from pathlib import Path
+from socket import gethostbyname, gaierror
+from urllib3.exceptions import (NewConnectionError, MaxRetryError)
 
 gsDir = "./DWN"
 gsTrim = ""
 gsEdo = ""
 gsArch = ""
+gsPath = ""
+gsTrys = 0
 
 def navegarEn(Url) : 
     page = requests.get(Url)
     return  BeautifulSoup(page.content, "html.parser")
 
 def descargarArchivo(page):
+    global gsPath
+    global gsTrys
     if(isinstance(page, str)):
         print("Descargando: " + page)
         Path(gsDir + '/' + gsEdo).mkdir(parents=True, exist_ok=True)
         nombre = gsDir + '/' + gsEdo + '/' + gsTrim + '-' + gsArch + '.zip'
-        if Path(nombre).is_file() :
+        if(nombre == gsPath) : 
+            gsTrys += 1
+        else:
+            gsTrys = 1
+            gsPath = nombre
+        if Path(gsPath).is_file() :
             print("Archivo Existente: " + nombre)
-        archivo = requests.get(page)
+        try:
+            archivo = requests.get(page)
+        except (
+            requests.exceptions.ConnectionError,
+            gaierror,
+            NewConnectionError,
+            MaxRetryError
+        ) as error:
+            if gsTrys < 10:
+                print('Reintentando descarga: [' + gsArch + ']')
+                return descargarArchivo(page)
+            else:
+                print("Se intentó " + gsTrys + " veces descargar el archivo " + page + "sin éxito.")
+                return False
         try:
             with open(nombre, 'wb') as f:
                 f.write(archivo.content)
