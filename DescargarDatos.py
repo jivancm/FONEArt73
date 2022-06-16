@@ -6,20 +6,41 @@
 from logging import exception
 from click import FileError
 import requests
+import socket
 from bs4 import BeautifulSoup
 from pathlib import Path
-from socket import gethostbyname, gaierror
 from urllib3.exceptions import (NewConnectionError, MaxRetryError)
 
 gsDir = "./DWN"
 gsTrim = ""
 gsEdo = ""
 gsArch = ""
+gsUrl = ""
 gsPath = ""
 gsTrys = 0
 
-def navegarEn(Url) : 
-    page = requests.get(Url)
+def navegarEn(Url):
+    global gsUrl
+    if Url == gsUrl :
+        gsTrys += 1
+    else:
+        gsUrl = Url
+        gsTrys = 1
+    try:
+        page = requests.get(gsUrl)
+    except (
+            requests.exceptions.ConnectionError,
+            socket.gaierror,
+            NewConnectionError,
+            MaxRetryError,
+            TimeoutError
+        ) as error:
+            if gsTrys < 10:
+                print('Reintentando descarga: [' + gsUrl + ']')
+                return navegarEn(gsUrl)
+            else:
+                print("Se intentó " + gsTrys + " veces navegar en " + gsUrl + "sin éxito.")
+                return BeautifulSoup("<html><body>No encontrado</body></html>", "html.parser")
     return  BeautifulSoup(page.content, "html.parser")
 
 def descargarArchivo(page):
@@ -40,9 +61,10 @@ def descargarArchivo(page):
             archivo = requests.get(page)
         except (
             requests.exceptions.ConnectionError,
-            gaierror,
+            socket.gaierror,
             NewConnectionError,
-            MaxRetryError
+            MaxRetryError,
+            TimeoutError
         ) as error:
             if gsTrys < 10:
                 print('Reintentando descarga: [' + gsArch + ']')
@@ -61,7 +83,8 @@ def descargarArchivo(page):
         for el in page.find_all('a') :
             txt = el.string
             if txt == 'Descargar archivo' :
-                return descargarArchivo('https://sep.gob.mx' + el['href'])
+                url = ('https://sep.gob.mx' if el['href'].startswith('/') else '') + el['href']
+                return descargarArchivo(url)
 
 def descargarEdo(pagEdo): 
     catalogos = [
@@ -101,12 +124,10 @@ def descargarEdo(pagEdo):
             global gsArch
             gsArch = catalogosResumen[idx]
             encontrados[idx] = 1
-            print("Archivo Encontrado: " + el.text + ' [' + el['href'] + ']')
-            if(el['href'].endswith('.zip')):
-                descargarArchivo('https://sep.gob.mx' + el['href'])
-                continue
-            res = navegarEn('https://sep.gob.mx' + el['href'])
-            descargarArchivo(res)
+            url = ('https://sep.gob.mx' if el['href'].startswith('/') else '') + el['href']
+            print("Archivo Encontrado: " + el.text + ' [' + url + ']')
+            
+            descargarArchivo(url if url.endswith('.zip') else navegarEn(url))
         except ValueError:
             continue
 
@@ -133,8 +154,9 @@ def navegaEdo(trim):
             global gsEdo
             gsEdo = estados[idx]
             encontrados[idx] = 1
-            print("Encontrado: " + el.text + ' [' + el['href'] + ']')
-            res = navegarEn('https://sep.gob.mx' + el['href'])
+            url = ('https://sep.gob.mx' if el['href'].startswith('/') else '') + el['href']
+            print("Encontrado: " + el.text + ' [' + url + ']')
+            res = navegarEn(url)
             descargarEdo(res)
         except ValueError:
             continue
@@ -146,7 +168,7 @@ def navegaTrim():
 #            {"trim": "2T2021",  "url": "https://sep.gob.mx/es/sep1/Segundo_Trimestre_2021"},
 #            {"trim": "3T2021",  "url": "https://sep.gob.mx/es/sep1/Tercer_Trimestre_2021"},
 #            {"trim": "4T2021",  "url": "https://sep.gob.mx/es/sep1/Cuarto_Trimestre_2021"},
-            {"trim": "1T2020",  "url": "https://sep.gob.mx/es/sep1/Primer_Trimestre_2020"},
+#            {"trim": "1T2020",  "url": "https://sep.gob.mx/es/sep1/Primer_Trimestre_2020"},
             {"trim": "2T2020",  "url": "https://sep.gob.mx/es/sep1/Segundo_Trimestre_2020"},
             {"trim": "3T2020",  "url": "https://sep.gob.mx/es/sep1/Tercer_Trimestre_2020"},
             {"trim": "4T2020",  "url": "https://sep.gob.mx/es/sep1/Cuarto_Trimestre_2020"},
